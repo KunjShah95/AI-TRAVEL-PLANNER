@@ -40,13 +40,14 @@ if 'favorite_hotels' not in st.session_state:
     st.session_state.favorite_hotels = []
 
 # Create tabs for different functionalities
-tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
     "🛫 Flight Search", 
     "🏨 Hotel Search", 
     "📅 Generate Itinerary",
     "💰 Budget Calculator",
     "✅ Travel Checklist",
     "💱 Currency Converter",
+    "🌤️ Weather",
     "⭐ Favorites"
 ])
 
@@ -184,14 +185,40 @@ with tab2:
 
                 # Weather information for location
                 if location:
-                    with st.spinner("Fetching weather information..."):
+                    with st.spinner("🌤️ Fetching weather information..."):
                         weather_data = {
                             "location": location,
                             "date": check_in_date.strftime("%Y-%m-%d")
                         }
                         weather_result = make_api_call("/get_weather/", weather_data)
-                        if weather_result and weather_result.get("temperature"):
-                            st.info(f"🌤️ Weather for {location} on {check_in_date.strftime('%B %d, %Y')}: {weather_result.get('temperature', 'N/A')}°F - {weather_result.get('condition', 'N/A')}")
+                        
+                        if weather_result:
+                            if weather_result.get("success") or weather_result.get("temperature") or weather_result.get("condition"):
+                                # Display weather in a prominent box
+                                weather_col1, weather_col2, weather_col3 = st.columns(3)
+                                with weather_col1:
+                                    if weather_result.get("temperature"):
+                                        temp_unit = weather_result.get("temperature_unit", "°F")
+                                        st.metric("Temperature", f"{weather_result.get('temperature')}{temp_unit}")
+                                with weather_col2:
+                                    if weather_result.get("condition"):
+                                        st.metric("Condition", weather_result.get("condition"))
+                                with weather_col3:
+                                    if weather_result.get("humidity"):
+                                        st.metric("Humidity", weather_result.get("humidity"))
+                                
+                                # Additional weather details
+                                weather_details = []
+                                if weather_result.get("wind"):
+                                    weather_details.append(f"Wind: {weather_result.get('wind')}")
+                                if weather_result.get("location"):
+                                    weather_details.append(f"Location: {weather_result.get('location')}")
+                                if weather_details:
+                                    st.caption(" | ".join(weather_details))
+                            elif weather_result.get("error"):
+                                st.warning(f"⚠️ Weather information unavailable: {weather_result.get('message', 'Please try again later.')}")
+                            else:
+                                st.info(f"🌤️ Weather information for {location} on {check_in_date.strftime('%B %d, %Y')} is currently unavailable. Please check a weather service directly.")
 
                 # Display Hotels
                 if result.get("hotels"):
@@ -445,6 +472,103 @@ with tab6:
                 st.info(result["note"])
 
 with tab7:
+    st.header("🌤️ Weather Forecast")
+    st.markdown("Get weather information for your travel destination.")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        weather_location = st.text_input("Location (City/Country)", key="weather_location", placeholder="e.g., New York, Paris")
+        weather_date = st.date_input("Date", min_value=datetime.today(), key="weather_date")
+    
+    with col2:
+        st.write("")  # Spacing
+        st.write("")  # Spacing
+        if st.button("🌤️ Get Weather", key="get_weather_btn"):
+            if not weather_location:
+                st.error("Please enter a location.")
+            else:
+                weather_data = {
+                    "location": weather_location,
+                    "date": weather_date.strftime("%Y-%m-%d")
+                }
+                
+                with st.spinner("Fetching weather information..."):
+                    weather_result = make_api_call("/get_weather/", weather_data)
+                
+                if weather_result:
+                    if weather_result.get("success") or weather_result.get("temperature") or weather_result.get("condition"):
+                        st.success(f"🌤️ Weather for {weather_location}")
+                        st.markdown("---")
+                        
+                        # Display weather in columns
+                        col_temp, col_cond, col_hum = st.columns(3)
+                        
+                        with col_temp:
+                            if weather_result.get("temperature"):
+                                temp_unit = weather_result.get("temperature_unit", "°F")
+                                st.metric(
+                                    "Temperature",
+                                    f"{weather_result.get('temperature')}{temp_unit}",
+                                    help="Current temperature"
+                                )
+                            else:
+                                st.metric("Temperature", "N/A")
+                        
+                        with col_cond:
+                            if weather_result.get("condition"):
+                                st.metric(
+                                    "Condition",
+                                    weather_result.get("condition"),
+                                    help="Weather condition"
+                                )
+                            else:
+                                st.metric("Condition", "N/A")
+                        
+                        with col_hum:
+                            if weather_result.get("humidity"):
+                                st.metric(
+                                    "Humidity",
+                                    weather_result.get("humidity"),
+                                    help="Humidity level"
+                                )
+                            else:
+                                st.metric("Humidity", "N/A")
+                        
+                        # Additional details
+                        st.markdown("---")
+                        details_col1, details_col2 = st.columns(2)
+                        
+                        with details_col1:
+                            st.write("**Location:**", weather_result.get("location", weather_location))
+                            st.write("**Date:**", weather_result.get("date", weather_date.strftime("%Y-%m-%d")))
+                        
+                        with details_col2:
+                            if weather_result.get("wind"):
+                                st.write("**Wind:**", weather_result.get("wind"))
+                            if weather_result.get("humidity"):
+                                st.write("**Humidity:**", weather_result.get("humidity"))
+                        
+                        # Weather summary box
+                        weather_summary = []
+                        if weather_result.get("temperature"):
+                            temp_unit = weather_result.get("temperature_unit", "°F")
+                            weather_summary.append(f"Temperature: {weather_result.get('temperature')}{temp_unit}")
+                        if weather_result.get("condition"):
+                            weather_summary.append(f"Condition: {weather_result.get('condition')}")
+                        if weather_result.get("wind"):
+                            weather_summary.append(f"Wind: {weather_result.get('wind')}")
+                        
+                        if weather_summary:
+                            st.info("📊 **Weather Summary:** " + " | ".join(weather_summary))
+                    elif weather_result.get("error"):
+                        st.error(f"❌ Error: {weather_result.get('message', 'Unable to fetch weather information.')}")
+                    else:
+                        st.warning(f"⚠️ Weather information for {weather_location} on {weather_date.strftime('%B %d, %Y')} is currently unavailable. Please try again later or check a weather service directly.")
+                else:
+                    st.error("Failed to fetch weather information. Please check your connection and try again.")
+
+with tab8:
     st.header("⭐ My Favorites")
     st.markdown("View and manage your saved flights and hotels.")
     

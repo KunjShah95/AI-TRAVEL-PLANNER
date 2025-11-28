@@ -901,22 +901,83 @@ async def get_weather(weather_request: WeatherRequest):
         
         search_results = await run_search(params)
         
-        weather_info = {}
-        answer_box = search_results.get("answer_box") or {}
-        knowledge_graph = search_results.get("knowledge_graph") or {}
+        weather_info = {
+            "location": weather_request.location,
+            "date": weather_request.date,
+            "temperature": None,
+            "condition": None,
+            "humidity": None,
+            "wind": None,
+            "success": False
+        }
         
-        # Extract weather data
-        weather_info["location"] = weather_request.location
-        weather_info["date"] = weather_request.date
-        weather_info["temperature"] = answer_box.get("temperature") or knowledge_graph.get("temperature")
-        weather_info["condition"] = answer_box.get("weather") or knowledge_graph.get("weather")
-        weather_info["humidity"] = answer_box.get("humidity")
-        weather_info["wind"] = answer_box.get("wind")
+        if search_results:
+            # Try multiple ways to extract weather data
+            answer_box = search_results.get("answer_box") or {}
+            knowledge_graph = search_results.get("knowledge_graph") or {}
+            organic_results = search_results.get("organic_results", [])
+            
+            # Extract temperature - try multiple fields
+            temp = (answer_box.get("temperature") or 
+                   answer_box.get("temp") or
+                   knowledge_graph.get("temperature") or
+                   knowledge_graph.get("temp"))
+            
+            if temp:
+                # Handle different temperature formats
+                if isinstance(temp, str):
+                    # Extract number from string like "72°F" or "22°C"
+                    import re
+                    temp_match = re.search(r'(-?\d+)', temp)
+                    if temp_match:
+                        weather_info["temperature"] = temp_match.group(1)
+                        weather_info["temperature_unit"] = "°F" if "F" in temp.upper() else "°C"
+                else:
+                    weather_info["temperature"] = str(temp)
+                    weather_info["temperature_unit"] = "°F"
+            
+            # Extract condition
+            condition = (answer_box.get("weather") or 
+                        answer_box.get("condition") or
+                        answer_box.get("precipitation") or
+                        knowledge_graph.get("weather") or
+                        knowledge_graph.get("condition"))
+            
+            if condition:
+                weather_info["condition"] = str(condition)
+            
+            # Extract humidity
+            humidity = answer_box.get("humidity") or knowledge_graph.get("humidity")
+            if humidity:
+                weather_info["humidity"] = str(humidity)
+            
+            # Extract wind
+            wind = answer_box.get("wind") or knowledge_graph.get("wind")
+            if wind:
+                weather_info["wind"] = str(wind)
+            
+            # Check if we got at least some data
+            if weather_info["temperature"] or weather_info["condition"]:
+                weather_info["success"] = True
+            else:
+                # Try to extract from organic results
+                if organic_results:
+                    snippet = organic_results[0].get("snippet", "")
+                    if "weather" in snippet.lower() or "°" in snippet:
+                        weather_info["condition"] = snippet[:200]  # Use snippet as fallback
+                        weather_info["success"] = True
         
         return weather_info
     except Exception as e:
         logger.exception(f"Error getting weather: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Weather lookup error: {str(e)}")
+        # Return error info instead of raising exception
+        return {
+            "location": weather_request.location,
+            "date": weather_request.date,
+            "error": str(e),
+            "success": False,
+            "message": "Weather information temporarily unavailable. Please try again later."
+        }
 
 if __name__ == "__main__":
     logger.info("Starting Travel Planning API server")
